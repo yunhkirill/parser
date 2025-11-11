@@ -1,0 +1,16 @@
+MAIN=1
+PIN=2
+INSTANCE=3
+DOT=4
+DASH=5
+COLON=6
+IDENTIFIER=7
+NEWLINE=8
+WS=9
+LINE_COMMENT=10
+'main:'=1
+'pin'=2
+'instance'=3
+'.'=4
+'-'=5
+':'=6
