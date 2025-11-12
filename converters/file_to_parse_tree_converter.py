@@ -4,10 +4,16 @@ from antlr4.error.ErrorListener import ErrorListener
 from ..resources import ExprLexer, ExprParser, ReportEntry, Error
 
 class SyntaxErrorListener(ErrorListener):
+    """
+    Обработчик синтаксических ошибок
+    """
     def __init__(self, reports: List[ReportEntry]):
         self.reports = reports
     
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
+        """
+        Функция обрабатывает синтаксическую ошибку, обнаруженную парсером
+        """
         self.reports.append(ReportEntry(
             error=Error.SYNTAX_ERROR,
             message=msg,
@@ -17,16 +23,21 @@ class SyntaxErrorListener(ErrorListener):
 
 class FileToParseTreeConverter:
     """
-    Конвертер из файла в ParseTree
+    Конвертер из исходного файла в ParseTree
     """
+    
     def convert(self, file_path: str, reports: List[ReportEntry]) -> ExprParser.ProgContext:
+        """
+        Основной метод конвертации файла в дерево разбора
+        """
         input_stream = FileStream(file_path, encoding='utf-8')
         
-        lexer = ExprLexer(input_stream)
+        lexer = ExprLexer(input_stream)         # разбиваем текст на токены
         token_stream = CommonTokenStream(lexer)
         
-        parser = ExprParser(token_stream)
+        parser = ExprParser(token_stream)       # строим дерево разбора из токенов
         
+        # заменяем стандартный обработчик ошибок
         error_listener = SyntaxErrorListener(reports)
         parser.removeErrorListeners()
         parser.addErrorListener(error_listener)
@@ -36,6 +47,9 @@ class FileToParseTreeConverter:
         return parse_tree, reports
 
     def print_parse_tree(self, parse_tree: ExprParser.ProgContext, indent: int = 0):
+        """
+        Функция рекурсивно выводит дерево разбора в читаемом формате
+        """
         if parse_tree is None:
             return
             

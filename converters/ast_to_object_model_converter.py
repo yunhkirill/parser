@@ -3,22 +3,38 @@ from ..resources import NetlistProject, AST, ASTNode, ReportEntry, Error
 
 class ASTToObjectModelConverter:
     """
-    Конвертер из AST в объектную модель
+    Конвертер из AST в объектную модель проекта
     """
+    
     def convert(self, ast: AST, project_name: str, reports: List) -> tuple[NetlistProject, List[ReportEntry]]:
+        """
+        Основной метод конвертации AST в объектную модель
+        """
         project = NetlistProject(project_name)
         
         primitive_definitions = self._analyze_primitive_definitions(ast)
+        
+        # создание всех определений блоков
         self._create_all_block_definitions(ast, project, primitive_definitions, reports)
+        
+        # заполнение содержимого блоков
         self._populate_blocks_content(ast, project, reports)
+        
+        # подключение пинов блоков
         self._connect_interface_pins(ast, project, reports)
+        
+        # подключение сетей к пинам
         self._connect_nets(ast, project, reports)
         
         return project, reports
 
     def _analyze_primitive_definitions(self, ast: AST) -> dict:
+        """
+        Анализирует AST для обнаружения примитивных блоков
+        """
         primitive_definitions = {}
         
+        # находим все узлы объявления инстансов
         instance_nodes = ast.find_nodes('instance_declaration')
         
         for node in instance_nodes:
@@ -29,6 +45,7 @@ class ASTToObjectModelConverter:
                     if instance_type not in primitive_definitions:
                         primitive_definitions[instance_type] = set()
                     
+                    # находим все соединения для этого инстанса, чтобы определить пины
                     connection_nodes = ast.find_nodes('connection')
                     for conn_node in connection_nodes:
                         if (conn_node.attributes.get('instance') == node.value and 
@@ -39,11 +56,19 @@ class ASTToObjectModelConverter:
         
         return primitive_definitions
 
-    def _create_all_block_definitions(self, ast: AST, project: NetlistProject, primitive_definitions: dict, reports: List[ReportEntry]):
+    def _create_all_block_definitions(self, ast: AST, project: NetlistProject, 
+                                    primitive_definitions: dict, reports: List[ReportEntry]):
+        """
+        Создает все определения блоков в проекте
+        """
         self._create_primitive_blocks(project, primitive_definitions, reports)
         self._create_regular_blocks(ast, project, reports)
 
-    def _create_primitive_blocks(self, project: NetlistProject, primitive_definitions: dict, reports: List[ReportEntry]):
+    def _create_primitive_blocks(self, project: NetlistProject, primitive_definitions: dict, 
+                               reports: List[ReportEntry]):
+        """
+        Создает примитивные блоки
+        """
         for primitive_name, pin_names in primitive_definitions.items():
             try:
                 project.add_primitive_block(primitive_name, list(pin_names))
@@ -55,6 +80,9 @@ class ASTToObjectModelConverter:
                 ))
 
     def _create_regular_blocks(self, ast: AST, project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Создает регулярные блоки, явно объявленные в AST через block_definition
+        """
         block_nodes = ast.find_nodes('block_definition')
         
         for node in block_nodes:
@@ -76,19 +104,21 @@ class ASTToObjectModelConverter:
                 ))
 
     def _populate_blocks_content(self, ast: AST, project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Наполняет блоки инстансами и создает пустые определения цепей
+        """
         block_nodes = ast.find_nodes('block_definition')
         
         for node in block_nodes:
             block_name = node.value
             
             instance_nodes = []
+            connection_nodes = []
+            
             for child in ast.get_children(node):
                 if child.node_type == 'instance_declaration':
                     instance_nodes.append(child)
-            
-            connection_nodes = []
-            for child in ast.get_children(node):
-                if child.node_type == 'connection':
+                elif child.node_type == 'connection':
                     connection_nodes.append(child)
             
             for instance_node in instance_nodes:
@@ -97,7 +127,11 @@ class ASTToObjectModelConverter:
             for connection_node in connection_nodes:
                 self._process_net_creation(connection_node, block_name, project, reports)
 
-    def _process_instance(self, instance_node: ASTNode, block_name: str, project: NetlistProject, reports: List[ReportEntry]):
+    def _process_instance(self, instance_node: ASTNode, block_name: str, 
+                         project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Обрабатывает создание инстанса блока внутри родительского блока
+        """
         instance_name = instance_node.value
         instance_type = instance_node.attributes.get('instance_type')
         
@@ -159,7 +193,11 @@ class ASTToObjectModelConverter:
                 line=getattr(instance_node, 'line', None)
             ))
 
-    def _process_net_creation(self, connection_node: ASTNode, block_name: str, project: NetlistProject, reports: List[ReportEntry]):
+    def _process_net_creation(self, connection_node: ASTNode, block_name: str, 
+                            project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Создает сети внутри блоков на основе узлов соединений
+        """
         net_name = connection_node.attributes.get('net')
         
         if not net_name:
@@ -178,6 +216,9 @@ class ASTToObjectModelConverter:
             ))
 
     def _connect_nets(self, ast: AST, project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Подключает пины экземпляров к сетям на основе информации о соединениях
+        """
         connection_nodes = ast.find_nodes('connection')
         
         for node in connection_nodes:
@@ -247,6 +288,9 @@ class ASTToObjectModelConverter:
                 ))
 
     def _find_pin_reference(self, block, instance_name: str, pin_name: str):
+        """
+        Находит пин в блоке или его экземплярах
+        """
         if instance_name and instance_name in block.instances:
             instance = block.instances[instance_name]
             if pin_name in instance.interface_pins:
@@ -257,6 +301,9 @@ class ASTToObjectModelConverter:
         return None
     
     def _connect_interface_pins(self, ast: AST, project: NetlistProject, reports: List[ReportEntry]):
+        """
+        Подключает пины блоков к внутренним сетям, обрабатывает объявления пинов с привязкой к сетям
+        """
         pin_nodes = ast.find_nodes('pin_declaration')
         
         for pin_node in pin_nodes:
@@ -265,6 +312,7 @@ class ASTToObjectModelConverter:
             net_name = pin_node.attributes.get('net')
             has_net = pin_node.attributes.get('has_net', False)
             
+            # пропускаем пины без привязки к сети или с неполной информацией
             if not all([block_name, pin_name]) or not has_net or not net_name:
                 continue
                 
@@ -303,5 +351,7 @@ class ASTToObjectModelConverter:
                 ))
 
 def getattr(node, attr, default=None):
-    """Безопасный getattr для узлов AST"""
+    """
+    Безопасный getattr для узлов AST
+    """
     return getattr(node, attr, default) if hasattr(node, attr) else default
